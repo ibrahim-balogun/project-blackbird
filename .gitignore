@@ -1,10 +1,10 @@
-# Terraform - never commit these
+# Terraform
 *.tfstate
 *.tfstate.backup
 .terraform/
 .terraform.lock.hcl
 
-# Secrets - NEVER commit these
+# Secrets
 *.pem
 *.key
 .env
