@@ -110,3 +110,70 @@ resource "aws_nat_gateway" "main" {
 
   depends_on = [aws_internet_gateway.main]
 }
+
+# ── ROUTE TABLE — PUBLIC ──────────────────────
+# Sends all internet traffic to IGW
+# This is what makes a subnet "public"
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-rt-public"
+  })
+}
+
+# ── ROUTE TABLES — PRIVATE ───────────────────
+# One per AZ — each routes through its own NAT
+# If AZ-1 dies, AZ-2 still has internet access
+resource "aws_route_table" "private" {
+  count  = length(var.availability_zones)
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main[count.index].id
+  }
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-rt-private-${var.availability_zones[count.index]}"
+  })
+}
+
+# ── ROUTE TABLE — DATABASE ────────────────────
+# No internet route at all
+# Database can only talk to private subnets
+resource "aws_route_table" "database" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(var.common_tags, {
+    Name = "${var.project_name}-rt-database"
+  })
+}
+
+# ── ROUTE TABLE ASSOCIATIONS ──────────────────
+# Connect each subnet to its route table
+# Without this subnets don't know which
+# route table to use
+
+resource "aws_route_table_association" "public" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "private" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
+
+resource "aws_route_table_association" "database" {
+  count          = length(var.availability_zones)
+  subnet_id      = aws_subnet.database[count.index].id
+  route_table_id = aws_route_table.database.id
+}
